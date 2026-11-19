@@ -1,0 +1,56 @@
+/* ---------- Failure by Design: reading experience ---------- */
+:root { --fbd-accent: #c2410c; --fbd-ink: #1f2937; --fbd-soft: #f4f1ea; --fbd-line: #e3ddd0; }
+.navy, .coal, .ayu { --fbd-accent: #fb923c; --fbd-ink: #e5e7eb; --fbd-soft: #1c2433; --fbd-line: #2e3a52; }
+
+.content main { max-width: 760px; }
+.content p, .content li { line-height: 1.75; }
+.content h1 { letter-spacing: -0.01em; }
+.content h2 { margin-top: 2.2em; padding-top: .4em; border-top: 1px solid var(--fbd-line); }
+
+/* Cold open: an on-call log at the start of a chapter */
+.coldopen {
+  background: #0f172a; color: #e2e8f0; border-radius: 10px; padding: 1.1em 1.3em 0.4em;
+  margin: 1.6em 0 2em; border-left: 5px solid var(--fbd-accent);
+  box-shadow: 0 6px 18px rgba(0,0,0,.18);
+}
+.coldopen .tag { display:inline-block; font-size:.72em; letter-spacing:.14em; text-transform:uppercase;
+  color: var(--fbd-accent); font-weight:700; margin-bottom:.4em; }
+.coldopen pre { background: transparent !important; border: 0; padding: 0; margin: .4em 0 1em; }
+.coldopen pre code { color: #e2e8f0 !important; background: transparent !important; font-size: .86em; line-height: 1.6; }
+.coldopen p { color:#cbd5e1; font-style: italic; }
+
+/* Tessera notebook: what we add to the running design at chapter end */
+.notebook {
+  background: var(--fbd-soft); border: 1px solid var(--fbd-line); border-radius: 10px;
+  padding: .9em 1.2em .4em; margin: 2em 0;
+  background-image: repeating-linear-gradient(transparent, transparent 27px, rgba(120,120,120,.10) 28px);
+}
+.notebook .tag { font-size:.72em; letter-spacing:.14em; text-transform:uppercase; font-weight:700; color: var(--fbd-accent); }
+
+/* Epigraph */
+.epigraph { font-style: italic; border-left: 3px solid var(--fbd-line); margin: 1.2em 0; padding: .1em 1em; opacity: .85; }
+
+/* Checkpoint (details) */
+details { background: var(--fbd-soft); border:1px solid var(--fbd-line); border-radius:8px; padding:.6em 1em; margin:.7em 0; }
+details > summary { cursor:pointer; font-weight:600; }
+
+/* Interactive widgets */
+.widget { border:1px solid var(--fbd-line); border-radius:12px; padding:1em 1.2em 1.1em; margin:1.6em 0;
+  background: var(--fbd-soft); box-shadow: 0 2px 10px rgba(0,0,0,.06); }
+.widget h4 { margin:0 0 .6em; font-size:.8em; text-transform:uppercase; letter-spacing:.12em; color: var(--fbd-accent); }
+.widget .row { display:flex; align-items:center; gap:.8em; margin:.45em 0; flex-wrap:wrap; }
+.widget .row label { flex:0 0 11em; font-size:.92em; }
+.widget .row input[type=range] { flex:1 1 180px; accent-color: var(--fbd-accent); }
+.widget .row .val { flex:0 0 6.5em; text-align:right; font-variant-numeric: tabular-nums; font-weight:600; }
+.widget .out { margin-top:.8em; padding:.6em .9em; border-radius:8px; background: rgba(194,65,12,.08);
+  border:1px dashed var(--fbd-accent); font-size:.95em; line-height:1.6; }
+.widget .out b { color: var(--fbd-accent); }
+.widget canvas { width:100%; max-width:100%; height:auto; margin-top:.6em; border-radius:8px; background: rgba(255,255,255,.04); }
+.widget .btns { display:flex; gap:.6em; flex-wrap:wrap; margin:.6em 0; }
+.widget button { border:1px solid var(--fbd-accent); background:transparent; color:inherit; border-radius:8px;
+  padding:.35em .9em; cursor:pointer; font-size:.9em; }
+.widget button.on { background: var(--fbd-accent); color:#fff; }
+.widget .legend { font-size:.8em; opacity:.85; margin-top:.3em; }
+
+/* Part titles in the sidebar a bit stronger */
+.chapter li.part-title { color: var(--fbd-accent); font-weight: 700; letter-spacing:.04em; }

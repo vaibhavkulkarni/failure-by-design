@@ -1,0 +1,28 @@
+[book]
+title = "Failure by Design"
+description = "A first-principles field guide to failure in microservices and distributed systems: the physics, the mathematics, a design method, and a layer-by-layer tour."
+authors = ["Failure by Design contributors"]
+language = "en"
+src = "src"
+
+[build]
+build-dir = "book"
+
+[output.html]
+default-theme = "light"
+preferred-dark-theme = "navy"
+mathjax-support = true
+smart-punctuation = true
+git-repository-url = "https://github.com/vaibhavkulkarni/failure-by-design"
+edit-url-template = "https://github.com/vaibhavkulkarni/failure-by-design/edit/main/{path}"
+additional-css = ["theme/custom.css"]
+additional-js = ["theme/widgets.js"]
+
+[output.html.search]
+enable = true
+limit-results = 20
+use-boolean-and = true
+
+[output.html.fold]
+enable = true
+level = 0
