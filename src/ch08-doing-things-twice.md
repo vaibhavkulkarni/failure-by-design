@@ -18,50 +18,115 @@ At-least-once delivery is the only delivery guarantee you can actually build. It
 
 ## What you can and cannot have
 
+<div class="derivation">
+
+<span class="tag">Derivation · where the delivery guarantees come from</span>
+
+**Question.** A consumer must do some work (apply an effect) and record that it did so (commit progress). It can crash between any two steps. What can it guarantee?
+
+**Derivation.** Enumerate the two possible orders and the crash that falls *between* the steps.
+
+1. **Record, then work.** Crash in between: progress says "done", but the work never happened. On restart the message is skipped. **Lost work: at-most-once.**
+2. **Work, then record.** Crash in between: the work happened, but progress says "not done". On restart the message is redelivered. **Repeated work: at-least-once.**
+3. There is no third ordering that closes the gap *if the two steps live in different systems*, because each is durable on its own and a crash can fall between them (the Two Generals problem again).
+4. You can close the gap in exactly two ways: put both steps in **one atomic unit** (one database transaction), or make the work **idempotent** so repeating it changes nothing.
+
+**Result.**
+
 | Guarantee | How | Cost |
 |---|---|---|
-| **At-most-once** | Send once, never retry | Loses messages on omission |
-| **At-least-once** | Retry until acknowledged | Duplicates |
-| **Exactly-once *effect*** | At-least-once + idempotent processing (or atomic commit of effect and progress) | Dedup state; key design |
+| **At-most-once** | Record first | Loses work on a crash |
+| **At-least-once** | Work first | Duplicates |
+| **Exactly-once *effect*** | At-least-once plus idempotent processing, or atomic commit of effect and progress | Dedup state; key design |
 
-"Exactly-once delivery" does not exist (Chapter 2). A broker's "exactly-once" feature gives exactly-once *within its own boundary*, for example read-process-write between topics. The moment you touch something outside it (an HTTP call, a database row, an email), you are back to at-least-once and need idempotency.
+A broker's "exactly-once" feature gives exactly-once *within its own boundary* (read-process-write between its own topics). The moment you touch something outside it (an HTTP call, a database row, an email), you are back to at-least-once and need idempotency.
+
+</div>
 
 ## Idempotence is algebra
 
-An operation \\( f \\) is **idempotent** if applying it twice equals applying it once:
+<div class="derivation">
 
-\\[ f(f(x)) = f(x) \\]
+<span class="tag">Derivation · making repetition harmless</span>
 
-| Operation | Idempotent? | Fix |
-|---|---|---|
-| `SET status = 'dispatched'` | Yes | none |
-| `INSERT order ... ON CONFLICT DO NOTHING` | Yes | none |
-| `balance = balance + 10` | **No** | Record operation ID; apply once |
-| "Send confirmation email" | **No** | Dedup record keyed by order + template |
-| "Append event to log" | **No** | Natural key or event ID |
+**Definition.** An operation \\( f \\) is **idempotent** if applying it twice equals applying it once: \\( f(f(x)) = f(x) \\).
 
-A stronger set of properties makes retries, reordering **and** replication all safe: operations that are **associative, commutative and idempotent (ACI)**. Data types built this way (CRDTs) merge in any order and any number of times. For each mutation in your system, ask: *can I express it as ACI or as a monotonic update; if not, which dedup mechanism applies?*
+1. *Any number of repeats collapses to one.* By induction: \\( f(f(f(x))) = f(f(x)) = f(x) \\), and so on. So at-least-once delivery plus an idempotent \\( f \\) is exactly-once in effect.
+2. *Turning a non-idempotent operation into an idempotent one.* Keep a set \\( S \\) of processed message IDs. Define the wrapped operation: "if the ID is in \\( S \\), do nothing; otherwise apply \\( f \\) and add the ID to \\( S \\)". Apply it twice: the second time the ID is already in \\( S \\), so nothing changes. The wrapped operation is idempotent even if \\( f \\) is not.
+3. *Reordering and regrouping.* If operations are also **commutative** (\\( a \cdot b = b \cdot a \\)) and **associative** (\\( (a\cdot b)\cdot c = a\cdot(b\cdot c) \\)), the result depends only on *which* messages arrived, not their order or grouping. Set union has all three properties (\\( A\cup B = B\cup A \\), \\( (A\cup B)\cup C = A\cup(B\cup C) \\), \\( A\cup A = A \\)). Such **ACI** operations are safe under duplication, reordering and replication together. A pile of sticky notes in a bowl does not care if a note is added twice or in a different order.
+
+**Reading the result: destinations, not directions.** A *destination* says where you should end up; replaying it is harmless. A *direction* says how to move; replaying it moves you again.
+
+| Harmless to replay (destinations) | Harmful to replay (directions) |
+|---|---|
+| set a value | toggle |
+| insert if absent | add to a balance |
+| add to a *set* (union) | append to a *list* |
+| "order is cancelled" | "send an email" |
+
+Prefer state-based events (`quantity is now 7`) over deltas (`decrement`).
+
+</div>
 
 ## Four parameters of a dedup scheme
 
-1. **Window.** Dedup records must outlive the longest possible redelivery: retry horizon + queue retention + consumer lag + *operational replays*. The cold open's failure was a window shorter than a replay.
-2. **Atomicity.** `if not seen(key): apply(); mark(key)` is a race unless the check and the effect are one atomic unit: a single transaction, a unique constraint, or an outbox/inbox row committed together with the state change.
-3. **Key semantics.** The key must identify the *business intent* (a client-generated request ID), not the transport attempt. A new connection must reuse the same key. And a request with a known key but a *different payload* must be rejected, not silently treated as a duplicate (store a payload fingerprint).
-4. **Volume.** Small probabilities multiply. At \\( 10^9 \\) messages a day, a duplicate rate of \\( 10^{-6} \\) is **a thousand duplicates daily**. "Rare" is not "never."
+<div class="derivation">
+
+<span class="tag">Derivation · window, atomicity, keys, volume</span>
+
+**1. Window.** A duplicate can arrive up to some delay \\( H \\) after the original. You can only recognise it while you still remember the original, so the dedup record must live at least \\( H \\):
+
+```text
+ now ◄──────────── redelivery horizon H ────────────►  past
+     [ dedup memory must cover at least this span ]
+```
+
+\\( H \\) is the *sum* of the worst cases that can chain: retry horizon + queue retention + consumer lag + operational replays. (The sum is deliberately conservative: it assumes the worst of each at once.) The cold open failed because the window (24 hours) was shorter than a replay (36 hours).
+
+**2. Atomicity.** Check-then-act is a race. Two copies of the same message arrive concurrently; both check "have I seen this?", both see "no", both apply, so the effect happens twice. The fix is to make the check and the effect one atomic step: a unique constraint (the database serialises the two inserts and rejects the second), a single transaction, or an outbox/inbox row committed with the state change.
+
+**3. Key semantics.** The key must identify the *business intent* (a client-generated request ID), not the transport attempt, otherwise a retry on a new connection looks new. A request with a known key but a *different payload* must be rejected, so store a payload fingerprint.
+
+**4. Volume.** Let \\( N \\) messages each have duplicate probability \\( p \\).
+
+- The **expected** number of duplicates is \\( Np \\). This needs no independence: an expected count is a sum of probabilities (*linearity of expectation*).
+- If duplicates are independent, the probability of *at least one* is \\( 1-(1-p)^N \approx 1 - e^{-Np} \\), the same dice rule as Chapter 5.
+
+| Messages/day | Duplicate rate | Expected duplicates/day | Verdict |
+|---|---|---|---|
+| \\( 10^{3} \\) | \\( 10^{-6} \\) | 0.001 | never seen in testing |
+| \\( 10^{6} \\) | \\( 10^{-6} \\) | 1 | seen weekly |
+| \\( 10^{9} \\) | \\( 10^{-6} \\) | 1,000 | an everyday event |
+
+So never ask "can it happen?" Ask **"how many per day?"**
+
+</div>
 
 > [!WARNING]
 > **Pitfall: dedup in memory.** A cache is lost on restart, and restart is exactly when duplicates arrive. Dedup state must be as durable as the effect it protects.
 
 ## The dual-write trap (derived, not memorised)
 
-Suppose a service saves an order to the database and then publishes an event to the broker. These are two separate operations. If the process crashes *between* them:
+<div class="derivation">
 
-```
+<span class="tag">Derivation · why two writes are never safe</span>
+
+**Question.** A service must save an order to a database and publish an event to a broker. Is there a safe ordering of the two steps?
+
+**Derivation.** Enumerate both orders and a crash between them.
+
+```text
 write DB ✔   crash   publish ✘   →  order exists, nobody told   (lost event)
 publish ✔    crash   write DB ✘   →  event sent, order missing   (phantom event)
 ```
 
-No ordering of the two steps is safe. The only fix is to make **one** of them the source of truth and **derive** the other. The **transactional outbox**: write the order *and* an outbox row in one database transaction; a relay reads the outbox and publishes (at-least-once), and consumers deduplicate. Atomicity is then local, and the unknown-outcome gap is covered by retry plus idempotency.
+1. Order 1 leaves a *lost event*. Order 2 leaves a *phantom event*. Neither is safe, and no reordering helps, because the gap *between* two separate durable steps cannot be closed.
+2. The only way out is to make **one** of them the source of truth and **derive** the other. **Transactional outbox:** write the order *and* an outbox row in **one** database transaction (atomic, so no gap). A relay reads the outbox and publishes at-least-once; consumers deduplicate.
+3. Atomicity is now local, and the remaining unknown-outcome gap is covered by retry plus idempotency.
+
+**Reading the result.** You cannot walk through two doors at the same instant. Put the letter and the receipt in **one envelope** (one transaction), and let a courier (the relay) deliver the envelope as many times as needed. Receivers recognise the receipt and ignore repeats.
+
+</div>
 
 ## Ordering is a separate guarantee
 
@@ -77,6 +142,18 @@ Some steps are not safely repeatable (charge a card, book a truck). For multi-st
 - Prefer **forward recovery** (retry until it completes) when a step must eventually succeed.
 - Use **compensation** only where there is a meaningful business undo (cancel a booking).
 - Run **reconciliation**: periodically compare two systems' views of the same truth and repair differences. It is the safety net for the unknown outcomes nothing else caught.
+
+<div class="rules">
+
+<span class="tag">Rules of thumb</span>
+
+1. **Send destinations, not directions.** Prefer state-based events to deltas.
+2. **Rare × volume = routine.** Compute expected duplicates per day.
+3. **Your dedup memory must outlast your longest replay.**
+4. **Atomic or nothing:** the check, the effect and the marker live in one transaction.
+5. **One envelope:** never write the database and the broker as two steps.
+
+</div>
 
 ## Checkpoint
 

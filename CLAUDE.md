@@ -58,12 +58,16 @@ Part IV chapters use a table per layer: *What fails / Key question / Math / See 
 
 ## Formatting rules and gotchas
 
+- **Derivation boxes (required for every formula in Parts II-III):** `<div class="derivation">` with a purple tag, containing **Question, Assumptions, numbered Derivation steps, Reading the result (limits, worked number, analogy), Where it breaks**. Never state a formula without its derivation or an explicit "stated, not derived" label (e.g. Kingman's approximation). Derive from first principles: probability rules (independence multiplies, mutually exclusive events add, complement), geometric series, linearity of expectation, counting, Little's argument, balance equations, first-order linearisation.
+- **Intuition boxes (older style):** maths chapters (3-9) use `<div class="intuition">` (why a formula is true: analogy, derivation, limiting cases) and `<div class="rules">` (rules of thumb, placed just before Checkpoint). Same blank-line rule as `coldopen`. Each formula should be followed by a worked number *and* a plain-language picture.
+
 - **Alerts:** `> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`. They render in mdBook and on GitHub.
 - **HTML blocks containing Markdown** (`coldopen`, `notebook`): put a **blank line** after the opening `<div>` and before `</div>`, or the inner Markdown will not render.
 - **Math** is MathJax: inline `\\( ... \\)`, display `\\[ ... \\]`.
   - Markdown eats escapes before punctuation. Write thin spaces as `\\,` and `\\;` (double backslash), never `\,` or `\;`. After editing a file run: `sed -i 's/\\,/\\\\,/g; s/\\;/\\\\;/g' FILE` **only if you wrote single-backslash forms**, never twice.
+  - Punctuation after a backslash is eaten by Markdown: write `\\,` `\\;` `\\!` (double) for spacing commands. Avoid primes (`g'`), because smart-punctuation curls the apostrophe; avoid `*` and `|` inside formulas.
   - Do not put `%` in the middle of a formula (MathJax treats it as a comment). At the very end of a span it is harmless; otherwise write it in prose.
-  - Prefer braces for subscripts (`a_{i}`); keep expressions simple to avoid stray emphasis parsing.
+  - Prefer braces for subscripts (`a_{i}`); keep expressions simple to avoid stray emphasis parsing. **Avoid `\underbrace{...}_{...}`**: two `_` in one paragraph get paired into `<em>` and corrupt the formula; explain the terms in prose instead. After a build, scan built HTML for `<em>` inside `\(...\)` spans.
 - **No wide tables in prose-heavy sections**; tables are for comparisons and lookups.
 - **Typography:** use smart punctuation naturally; avoid long em-dash chains. Keep paragraphs short.
 - **Never reproduce copyrighted text.** Appendix D cites works by title and author only.
@@ -93,7 +97,7 @@ Notebook entries are cumulative: entry N may reference earlier entries. Chapter 
 
 ## Widgets (`theme/widgets.js`)
 
-- A widget is `<div class="widget" data-widget="NAME"></div>`. Registered names: `series`, `ccf`, `shuffle`, `fanout`, `queue`, `drain`, `retry`, `meta`, `burn`.
+- A widget is `<div class="widget" data-widget="NAME"></div>`. Registered names: `series`, `ccf`, `shuffle`, `fanout`, `queue`, `drain`, `retry`, `meta`, `burn`, `downtime`, `dots`, `little`, `phi`, `cobweb`.
 - Pure model code lives in `Core` (also exported for node). The DOM code is vanilla JS, no dependencies, no network calls.
 - To add a widget: add `W.name = (el) => {...}` using the `slider`, `title`, `outBox`, `canvas` helpers; sliders are moved above the output automatically on boot.
 - **`Core.simulate`** (the retry-storm toy) must keep the property that: no protection and retries on **collapses**; retries off, or retry budget, or shedding **recovers**. Ch. 6's "Things to try" list depends on that. Re-verify after any change:
@@ -111,7 +115,7 @@ for (const o of [{r:0},{r:2},{r:2,budget:true},{r:2,shed:true}]) {
 ## Content principles
 
 1. **Derive, then name.** Show why a mechanism follows from the physics or the numbers before naming it.
-2. **Every formula gets a worked number.** Label made-up inputs "illustrative".
+2. **Every formula is derived on the page, then given a worked number and a plain reading.** Label made-up inputs "illustrative". State assumptions explicitly: they are where formulas break.
 3. **Be honest about margins and limits.** Show sensitivity (e.g., what flips the SLO), list accepted risks.
 4. **Currencies:** every mechanism spends **space, time, information, or semantics**; say which.
 5. **Safety before liveness** unless an invariant says otherwise; classify invariants with CALM.

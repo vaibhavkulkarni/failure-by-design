@@ -54,3 +54,24 @@ details > summary { cursor:pointer; font-weight:600; }
 
 /* Part titles in the sidebar a bit stronger */
 .chapter li.part-title { color: var(--fbd-accent); font-weight: 700; letter-spacing:.04em; }
+
+/* Intuition boxes and rules of thumb */
+.intuition { background: rgba(37,99,235,.06); border-left: 5px solid #2563eb; border-radius: 8px;
+  padding: .8em 1.2em .3em; margin: 1.6em 0; }
+.intuition .tag { display:inline-block; font-size:.72em; letter-spacing:.14em; text-transform:uppercase;
+  font-weight:700; color:#2563eb; margin-bottom:.3em; }
+.navy .intuition .tag, .coal .intuition .tag, .ayu .intuition .tag { color:#93c5fd; }
+.rules { background: rgba(22,163,74,.07); border-left: 5px solid #16a34a; border-radius: 8px;
+  padding: .8em 1.2em .3em; margin: 2em 0; }
+.rules .tag { display:inline-block; font-size:.72em; letter-spacing:.14em; text-transform:uppercase;
+  font-weight:700; color:#16a34a; margin-bottom:.3em; }
+.intuition pre, .rules pre { background: transparent; }
+
+/* Derivation boxes: every formula is derived on the page */
+.derivation { background: rgba(124,58,237,.06); border-left: 5px solid #7c3aed; border-radius: 8px;
+  padding: .8em 1.2em .3em; margin: 1.6em 0; }
+.derivation .tag { display:inline-block; font-size:.72em; letter-spacing:.14em; text-transform:uppercase;
+  font-weight:700; color:#7c3aed; margin-bottom:.3em; }
+.navy .derivation .tag, .coal .derivation .tag, .ayu .derivation .tag { color:#c4b5fd; }
+.derivation pre { background: transparent; }
+.derivation table { font-size: .93em; }

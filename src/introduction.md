@@ -54,6 +54,7 @@ Every chapter has the same rhythm, so you always know where you are:
 |---|---|
 | **Cold open** | A short, fictional on-call log. Read it first; the chapter explains what happened. |
 | **Concepts** | The idea, derived rather than asserted. |
+| **Derivation** | Every formula in Parts II and III is derived on the page: *Question → Assumptions → Steps → Reading the result → Where it breaks*. You never have to take a formula on trust. |
 | **Try it** | An interactive widget. Drag sliders, break things, see the numbers move. |
 | **Pitfalls** | The mistakes that survive code review. |
 | **Checkpoint** | Questions with hidden answers. Commit to an answer before you peek. |
@@ -70,7 +71,7 @@ Every chapter has the same rhythm, so you always know where you are:
 
 ## Conventions
 
-- Math appears as short formulas with a worked number right after. If a formula scares you, jump to the number.
+- Each formula comes with its derivation (a purple box), then a worked number, then a plain-language reading. If the algebra scares you, read the *Reading the result* paragraph first, then come back for the steps. The **Assumptions** line tells you exactly when a formula stops being true.
 - "Hard dependency" means the request cannot succeed without it. "Soft" means it can degrade. "Async" means it can wait.
 - Illustrative numbers are labelled. Replace them with your measurements before making decisions.
 
