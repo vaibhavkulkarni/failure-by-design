@@ -58,6 +58,8 @@ Part IV chapters use a table per layer: *What fails / Key question / Math / See 
 
 ## Formatting rules and gotchas
 
+- **Teaching pattern for every formula (Parts II-III): plain numbers first, then symbols.** Order each concept as: *The question* -> *Start with plain numbers* (a small worked case anyone can follow, e.g. 100 requests through two 90% hops) -> *Now with symbols* -> *Reading the result* (units check, analogy) -> *Where this stops being true*. Define every symbol on first use. Prefer enumeration tables and area/timeline diagrams to bare algebra. Put prerequisite maths in a `<div class=\"primer\">` box at the start of a chapter. Keep calculus in a collapsed `<details>` as optional. Chapter 3 is the reference implementation of this pattern; Chapters 4-9 should be brought to the same standard.
+- **Widgets must be visible in all themes** (light, navy, coal, ayu). Prefer DOM/SVG with `currentColor` and opacity over canvas with fixed greys. Test headlessly (see below) in light and navy.
 - **Derivation boxes (required for every formula in Parts II-III):** `<div class="derivation">` with a purple tag, containing **Question, Assumptions, numbered Derivation steps, Reading the result (limits, worked number, analogy), Where it breaks**. Never state a formula without its derivation or an explicit "stated, not derived" label (e.g. Kingman's approximation). Derive from first principles: probability rules (independence multiplies, mutually exclusive events add, complement), geometric series, linearity of expectation, counting, Little's argument, balance equations, first-order linearisation.
 - **Intuition boxes (older style):** maths chapters (3-9) use `<div class="intuition">` (why a formula is true: analogy, derivation, limiting cases) and `<div class="rules">` (rules of thumb, placed just before Checkpoint). Same blank-line rule as `coldopen`. Each formula should be followed by a worked number *and* a plain-language picture.
 
@@ -97,7 +99,7 @@ Notebook entries are cumulative: entry N may reference earlier entries. Chapter 
 
 ## Widgets (`theme/widgets.js`)
 
-- A widget is `<div class="widget" data-widget="NAME"></div>`. Registered names: `series`, `ccf`, `shuffle`, `fanout`, `queue`, `drain`, `retry`, `meta`, `burn`, `downtime`, `dots`, `little`, `phi`, `cobweb`.
+- A widget is `<div class="widget" data-widget="NAME"></div>`. Registered names: `series`, `ccf`, `shuffle`, `fanout`, `queue`, `drain`, `retry`, `meta`, `burn`, `downtime`, `dots`, `little`, `phi`, `cobweb`, `survival`, `bulbs`.
 - Pure model code lives in `Core` (also exported for node). The DOM code is vanilla JS, no dependencies, no network calls.
 - To add a widget: add `W.name = (el) => {...}` using the `slider`, `title`, `outBox`, `canvas` helpers; sliders are moved above the output automatically on boot.
 - **`Core.simulate`** (the retry-storm toy) must keep the property that: no protection and retries on **collapses**; retries off, or retry budget, or shedding **recovers**. Ch. 6's "Things to try" list depends on that. Re-verify after any change:
@@ -110,7 +112,7 @@ for (const o of [{r:0},{r:2},{r:2,budget:true},{r:2,shed:true}]) {
 # expected end goodput: 70, 0, 70, 70
 ```
 
-- Test DOM behaviour headlessly with `jsdom` (stub `HTMLCanvasElement.prototype.getContext`); there is no committed test harness yet.
+- Test DOM behaviour headlessly with `jsdom` (stub `HTMLCanvasElement.prototype.getContext`). For real rendering (themes, MathJax, screenshots) use `puppeteer-core` with `@sparticuz/chromium`, and serve MathJax 2.7.x from `node_modules/mathjax` via request interception on the cdnjs URL. There is no committed test harness yet.
 
 ## Content principles
 

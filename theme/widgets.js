@@ -47,6 +47,36 @@
       return out;
     }
   };
+
+  /* ---- intuition helpers ---- */
+  function erf(x) {
+    const sgn = x < 0 ? -1 : 1; x = Math.abs(x);
+    const t = 1 / (1 + 0.3275911 * x);
+    const y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
+    return sgn * y;
+  }
+  /* P(heartbeat still silent after t | healthy), assuming normal gaps; phi = -log10 of that */
+  Core.phi = (t, mu, sd) => {
+    const p = 0.5 * (1 - erf((t - mu) / (sd * Math.SQRT2)));
+    return { p, phi: p > 0 ? -Math.log10(p) : Infinity };
+  };
+  /* Load seen next round, given load x now: failures grow with x, retries add to fresh load. */
+  Core.cobwebG = (x, lam, r, C) => lam * (1 + r * Math.max(0, Math.min(1, (x - C) / C)));
+  Core.cobwebFixed = (lam, r, C) => {
+    const hi = lam * (1 + r) * 1.2 + 10, out = [];
+    let prev = Core.cobwebG(0, lam, r, C) - 0;
+    for (let x = 0.05; x <= hi; x += 0.05) {
+      const cur = Core.cobwebG(x, lam, r, C) - x;
+      if (prev === 0 || prev * cur < 0) {
+        const slope = (Core.cobwebG(x + 0.5, lam, r, C) - Core.cobwebG(x - 0.5, lam, r, C)) / 1.0;
+        const last = out[out.length - 1];
+        if (!last || Math.abs(last.x - x) > 1) out.push({ x: +x.toFixed(1), stable: Math.abs(slope) < 1 });
+      }
+      prev = cur;
+    }
+    return out;
+  };
+
   if (typeof module !== 'undefined') module.exports = Core;
   if (typeof document === 'undefined') return;
   window.FBD = Core;
@@ -263,6 +293,191 @@
     x = slider(el, 'SLO (nines)', 2, 4.5, 0.1, 3, (v) => v.toFixed(1), go);
     days = slider(el, 'Window (days)', 7, 90, 1, 30, (v) => v, go);
     e = slider(el, 'Error rate right now', 0, 10, 0.05, 1.44, (v) => v.toFixed(2) + '%', go);
+    go();
+  };
+
+
+  /* ---------- Intuition widgets ---------- */
+  W.downtime = (el) => {
+    title(el, 'Try it: how big is a nine?');
+    const out = outBox(el);
+    let x;
+    const go = () => {
+      const U = Math.pow(10, -x.get());
+      const yr = U * YEAR_MIN, mo = U * 30 * 1440, day = U * 1440;
+      out.innerHTML = `Availability <b>${pct(1 - U, 4)}</b> allows:<br>• <b>${dur(yr)}</b> down per year<br>• <b>${dur(mo)}</b> per 30 days<br>• <b>${dur(day)}</b> per day<br>• in "incident" terms: about <b>${(yr / 30).toFixed(1)}</b> thirty-minute incidents a year.`;
+    };
+    x = slider(el, 'Number of nines', 1, 6, 0.1, 3, (v) => v.toFixed(1), go);
+    go();
+  };
+
+  W.dots = (el) => {
+    title(el, 'Try it: 1,000 requests through the chain');
+    const out = outBox(el);
+    const btns = h('div', { class: 'btns' });
+    const again = h('button', {}, 'Send another 1,000');
+    btns.append(again);
+    const grid = h('div', { class: 'dotgrid' });
+    const legend = h('div', { class: 'legend' }, 'Each dot is one request. Grey: it passed every hop. Red: it failed at some hop.');
+    const tallyTitle = h('div', { class: 'tallytitle' }, 'Where the failed requests died (one column per hop, one block per request):');
+    const tally = h('div', { class: 'tally' });
+    el.append(btns, grid, legend, tallyTitle, tally);
+    let n, x;
+    const go = () => {
+      const a = aFromNines(x.get()), nn = n.get(), U = 1 - a;
+      const diedAt = new Array(nn).fill(0);
+      let failed = 0;
+      grid.textContent = '';
+      for (let i = 0; i < 1000; i++) {
+        let at = -1;
+        for (let k = 0; k < nn; k++) if (Math.random() > a) { at = k; break; }
+        if (at >= 0) { failed++; diedAt[at]++; }
+        grid.append(h('i', { class: at >= 0 ? 'bad' : '' }));
+      }
+      tally.textContent = '';
+      diedAt.forEach((c, k) => {
+        const col = h('div', { class: 'col' });
+        for (let b = 0; b < Math.min(c, 10); b++) col.append(h('b', {}));
+        col.append(h('span', {}, nn <= 20 || (k + 1) % 5 === 0 ? String(k + 1) : '\u00a0'));
+        tally.append(col);
+      });
+      out.innerHTML = `Each hop is down ${(U * 100).toFixed(3)}% of the time, so it kills about <b>${(1000 * U).toFixed(1)}</b> of every 1,000 requests that reach it. With ${nn} hops those bites add up to about <b>${(1000 * nn * U).toFixed(1)}</b>. In this sample, <b>${failed}</b> of 1,000 failed. (Exact formula: ${(1000 * (1 - Math.pow(a, nn))).toFixed(1)}.)`;
+    };
+    n = slider(el, 'Hops in series', 1, 40, 1, 20, (v) => v, go);
+    x = slider(el, 'Per-hop nines', 1.5, 4, 0.1, 3, (v) => v.toFixed(1), go);
+    again.addEventListener('click', go);
+    go();
+  };
+
+  W.bulbs = (el) => {
+    title(el, 'Watch it happen: 1,000 bulbs');
+    const out = outBox(el);
+    const grid = h('div', { class: 'dotgrid' });
+    const legend = h('div', { class: 'legend' }, 'Grey dot: bulb still on. Red ring: burned out. Every bulb has its own random lifetime, fixed for this page, so sliding the day shows the same bulbs failing in order.');
+    el.append(grid, legend);
+    function mulberry32(a) { return function () { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+    const rnd = mulberry32(20261120);
+    const u = [];
+    for (let i = 0; i < 1000; i++) u.push(rnd() + 1e-9);
+    const dots = u.map(() => { const d = h('i'); grid.append(d); return d; });
+    let M, day;
+    const go = () => {
+      const m = M.get(), t = day.get();
+      let alive = 0;
+      dots.forEach((d, i) => { const dead = -m * Math.log(u[i]) <= t; d.className = dead ? 'dead' : ''; if (!dead) alive++; });
+      const x = t / m;
+      out.innerHTML = `Day <b>${t}</b> is <b>${x.toFixed(2)}</b> average lifetimes. <b>${alive}</b> of 1,000 bulbs are still on. The formula 1,000 × e<sup>−${x.toFixed(2)}</sup> predicts <b>${(1000 * Math.exp(-x)).toFixed(0)}</b>.`;
+    };
+    M = slider(el, 'Average lifetime (days)', 200, 2000, 100, 1000, (v) => v, go);
+    day = slider(el, 'Day', 0, 3000, 10, 1000, (v) => v, go);
+    go();
+  };
+
+  W.survival = (el) => {
+    title(el, 'Try it: how long does a part last?');
+    const out = outBox(el);
+    const holder = h('div');
+    el.append(holder);
+    let mtbf, t;
+    const go = () => {
+      const M = mtbf.get(), T = t.get(), R = (v) => Math.exp(-v / M);
+      const Wd = 640, Hd = 226, L = 44, B = 42, xmax = 10;
+      const X = (v) => L + (v / xmax) * (Wd - L - 14), Y = (p) => Hd - B - p * (Hd - B - 12);
+      let pts = '';
+      for (let v = 0; v <= xmax + 1e-9; v += 0.1) pts += `${X(v).toFixed(1)},${Y(R(v)).toFixed(1)} `;
+      const dot = (v, col) => `<circle cx="${X(v).toFixed(1)}" cy="${Y(R(v)).toFixed(1)}" r="6" fill="${col}"/>`;
+      let ticks = '';
+      for (let v = 0; v <= xmax; v += 2) ticks += `<text x="${X(v)}" y="${Hd - 24}" text-anchor="middle" font-size="11" fill="currentColor">${v}</text>`;
+      [0, 0.5, 1].forEach((p) => { ticks += `<text x="${L - 6}" y="${Y(p) + 4}" text-anchor="end" font-size="11" fill="currentColor">${p * 100}%</text><line x1="${L}" x2="${Wd - 14}" y1="${Y(p)}" y2="${Y(p)}" stroke="currentColor" opacity=".15"/>`; });
+      holder.innerHTML = `<svg viewBox="0 0 ${Wd} ${Hd}" style="width:100%;height:auto;color:inherit">
+        ${ticks}
+        <text x="${(L + Wd) / 2}" y="${Hd - 6}" text-anchor="middle" font-size="12" fill="currentColor">time elapsed (years)</text>
+        <polyline points="${pts}" fill="none" stroke="#c2410c" stroke-width="3"/>
+        ${M <= xmax ? dot(M, '#2563eb') : ''}${dot(T, '#16a34a')}</svg>`;
+      out.innerHTML = `Failure rate λ = 1 ÷ MTBF = <b>${(1 / M).toFixed(2)}</b> per year.<br>After <b>${T}</b> ${T === 1 ? 'year' : 'years'}, <b>${(R(T) * 100).toFixed(1)}%</b> of parts are still working (green dot).<br>After one full MTBF (${M} years, blue dot), only <b>${(Math.exp(-1) * 100).toFixed(1)}%</b> are: an MTBF is an average, not a guarantee.`;
+    };
+    mtbf = slider(el, 'MTBF (years)', 0.5, 10, 0.5, 2, (v) => v.toFixed(1), go);
+    t = slider(el, 'Time elapsed (years)', 0, 10, 0.25, 1, (v) => v.toFixed(2), go);
+    go();
+  };
+
+  W.little = (el) => {
+    title(el, "Try it: Little's Law at the pool");
+    const out = outBox(el);
+    const cv = canvas(el, 640, 70);
+    let lam, w, pool;
+    const go = () => {
+      const L = lam.get() * w.get() / 1000, P = pool.get();
+      const g = cv.getContext('2d'), W_ = cv.width;
+      g.clearRect(0, 0, W_, 70);
+      const scale = (W_ - 20) / Math.max(L, P) / 1.05;
+      g.fillStyle = 'rgba(100,116,139,.25)'; g.fillRect(10, 12, P * scale, 22);
+      g.fillStyle = L > P ? '#c2410c' : '#16a34a'; g.fillRect(10, 12, Math.min(L, P) * scale, 22);
+      if (L > P) { g.fillStyle = 'rgba(194,65,12,.55)'; g.fillRect(10 + P * scale, 12, (L - P) * scale, 22); }
+      g.fillStyle = ink(); g.font = '12px sans-serif';
+      g.fillText(`pool = ${P}`, 10, 52); g.fillText(`needed = ${L.toFixed(1)}`, 10 + Math.min(L, Math.max(L, P)) * scale - 70, 64);
+      out.innerHTML = L <= P
+        ? `Concurrency needed: ${lam.get()}/s × ${w.get()} ms = <b>${L.toFixed(1)}</b> in flight. The pool of ${P} has <b>${((1 - L / P) * 100).toFixed(0)}%</b> spare.`
+        : `Concurrency needed: ${lam.get()}/s × ${w.get()} ms = <b>${L.toFixed(0)}</b>, but the pool holds ${P}. <b>${(lam.get() - P / (w.get() / 1000)).toFixed(0)} requests/s</b> now queue, and queueing makes W larger, which makes the need larger still.`;
+    };
+    lam = slider(el, 'Arrival rate λ (req/s)', 10, 2000, 10, 500, (v) => v, go);
+    w = slider(el, 'Time in system W (ms)', 5, 3000, 5, 40, (v) => v + ' ms', go);
+    pool = slider(el, 'Pool size', 10, 600, 10, 200, (v) => v, go);
+    go();
+  };
+
+  W.phi = (el) => {
+    title(el, 'Try it: how suspicious is the silence?');
+    const out = outBox(el);
+    let mu, sd, t;
+    const go = () => {
+      const r = Core.phi(t.get(), mu.get(), sd.get());
+      const ph = r.phi;
+      const act = ph < 1 ? 'Do nothing; this is ordinary lateness.'
+        : ph < 3 ? 'Stop sending <i>new</i> requests to it (cheap, reversible).'
+        : ph < 8 ? 'Treat it as down for traffic; consider a restart.'
+        : 'Very likely dead. A stateful failover is now defensible, <i>with fencing</i>.';
+      out.innerHTML = `If it were healthy, silence this long would occur with probability <b>${r.p < 1e-6 ? r.p.toExponential(1) : (r.p * 100).toFixed(3) + '%'}</b>, so φ = <b>${isFinite(ph) ? ph.toFixed(1) : '∞'}</b> ("${isFinite(ph) ? ph.toFixed(1) : '∞'} nines of suspicion").<br>${act}<br><span class="legend">Assumes bell-shaped heartbeat gaps. Real networks have heavier tails, so true suspicion is lower than shown. Use measured quantiles.</span>`;
+    };
+    mu = slider(el, 'Usual heartbeat gap', 200, 2000, 50, 1000, (v) => v + ' ms', go);
+    sd = slider(el, 'Jitter (std dev)', 20, 500, 10, 100, (v) => v + ' ms', go);
+    t = slider(el, 'Silence so far', 0, 3000, 50, 1300, (v) => v + ' ms', go);
+    go();
+  };
+
+  W.cobweb = (el) => {
+    title(el, 'Play it: two valleys');
+    const out = outBox(el);
+    const cv = canvas(el, 640, 320);
+    let lam, r, C, x0;
+    const go = () => {
+      const l = lam.get(), rr = r.get(), c = C.get();
+      const xmax = Math.max(260, l * (1 + rr) * 1.25);
+      const g = cv.getContext('2d'), w = cv.width, hh = cv.height, col = ink();
+      const X = (v) => 45 + (v / xmax) * (w - 60), Y = (v) => hh - 30 - (v / xmax) * (hh - 45);
+      g.clearRect(0, 0, w, hh);
+      g.strokeStyle = col; g.globalAlpha = 0.4; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(45, 10); g.lineTo(45, hh - 30); g.lineTo(w - 10, hh - 30); g.stroke();
+      g.setLineDash([4, 4]); g.beginPath(); g.moveTo(X(0), Y(0)); g.lineTo(X(xmax), Y(xmax)); g.stroke(); g.setLineDash([]);
+      g.globalAlpha = 1; g.fillStyle = col; g.font = '11px sans-serif';
+      g.fillText('load seen next round', 50, 18); g.fillText('load seen now →', w - 105, hh - 12);
+      g.strokeStyle = '#c2410c'; g.lineWidth = 2.5; g.beginPath();
+      for (let v = 0; v <= xmax; v += 1) { const px = X(v), py = Y(Core.cobwebG(v, l, rr, c)); v ? g.lineTo(px, py) : g.moveTo(px, py); }
+      g.stroke();
+      let x = Math.min(x0.get(), xmax), path = [x];
+      g.strokeStyle = '#2563eb'; g.lineWidth = 1.4; g.beginPath(); g.moveTo(X(x), Y(x));
+      for (let i = 0; i < 40; i++) { const y = Core.cobwebG(x, l, rr, c); g.lineTo(X(x), Y(y)); g.lineTo(X(y), Y(y)); x = y; path.push(y); }
+      g.stroke();
+      const fx = Core.cobwebFixed(l, rr, c);
+      fx.forEach((f) => { g.beginPath(); g.arc(X(f.x), Y(f.x), 6, 0, 7); g.fillStyle = f.stable ? '#16a34a' : '#fff'; g.fill(); g.strokeStyle = f.stable ? '#16a34a' : '#c2410c'; g.lineWidth = 2; g.stroke(); });
+      const desc = fx.map((f) => `${f.x.toFixed(0)} (${f.stable ? 'stable' : 'tipping point'})`).join(', ') || 'none';
+      const end = path[path.length - 1];
+      out.innerHTML = `Fixed points: <b>${desc}</b>.<br>Starting from <b>${x0.get()}</b>/s of load, the system settles at <b>${end.toFixed(0)}</b>/s: ${end <= c ? '<b>recovered</b> (below capacity)' : '<b>collapsed</b> (retries hold the load above capacity)'}.<br><span class="legend">Orange: next-round load as a function of this-round load. Dashed: "next = now". Green dots: stable resting points. White dot: the hill between them. Blue: the path the system actually follows.</span>`;
+    };
+    lam = slider(el, 'Normal load (req/s)', 30, 120, 5, 70, (v) => v, go);
+    r = slider(el, 'Retries per failure', 0, 3, 0.5, 2, (v) => v, go);
+    C = slider(el, 'Capacity (req/s)', 60, 150, 5, 100, (v) => v, go);
+    x0 = slider(el, 'Load right after the trigger', 40, 300, 5, 170, (v) => v, go);
     go();
   };
 
